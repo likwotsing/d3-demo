@@ -9,6 +9,13 @@ var totalData = {
   links: []
 };
 
+var currentClickNode = null
+var currentTotalData = {
+  nodes: [],
+  links: []
+}
+var firstFlag = true
+
 // d3.json('./mock/miserables.json').then(function(data) {
 //   console.log('data', data)
 //   var r = chart(data)
@@ -23,11 +30,10 @@ d3.dsv(",", "./mock/triples.csv", function(d) {
     label: d.label
   }
 }).then(function(res) {
-  console.log('res', res);
+  console.log('res', res)
   var nodes = [];
   var nodeArr = [];
   var links = [];
-  var groups = new Set();
   var obj = {};
   res.forEach((c, i, a) => {
     obj = {}
@@ -36,9 +42,6 @@ d3.dsv(",", "./mock/triples.csv", function(d) {
     obj.relation = c.relation;
     obj.label = c.label;
     links.push(obj);
-    // // groups
-    // groups.add(c.relation);
-    // nodes
     nodeArr.push(c.source)
     nodeArr.push(c.target)
   });
@@ -56,12 +59,13 @@ d3.dsv(",", "./mock/triples.csv", function(d) {
   var currentNodesName = []
   currentNodesName.push(totalData.nodes[1].id)
   var currentName = totalData.nodes[1].id
-  var currentLinks = totalData.links.filter(c => {
-    if (c.source === currentName) {
+  var currentLinks = []
+  currentLinks = totalData.links.filter(c => {
+    if (!firstFlag && c.source === currentName) {
       currentNodesName.push(c.target)
       return c
     }
-    if (c.target === currentName) {
+    if (!firstFlag && c.target === currentName) {
       currentNodesName.push(c.source)
       return c
     }
@@ -72,12 +76,87 @@ d3.dsv(",", "./mock/triples.csv", function(d) {
       id: c
     })
   });
-  var r = chart({
-    nodes: currentNodes,
+  console.log('currentLinks', currentLinks)
+  currentClickNode = totalData.nodes[0]
+  currentTotalData = {
+    nodes: [totalData.nodes[0]],
     links: currentLinks
-  })
-  document.getElementById('main').appendChild(r)
+  }
+  var r = chart(currentTotalData)
+  // var r = chart(totalData)
+  // document.getElementById('svg-wrap').appendChild(r)
 });
+
+/**
+ * 先不考虑首次加载
+ * @param {点击的当前节点名称} name 
+ * @param {当前已经存在的node、link} total 
+ */
+function handleClick(name, total) {
+  var result = []
+  // 从totalData里遍历获取直接相关的links
+  var links = []
+  totalData.links.forEach((c, i, a) => {
+    if (c.source === name || c.target === name) {
+      links.push(c)
+    }
+  })
+  console.log('links', links)
+  // 和已经存在的合并，删除重复的
+  var linkFlag = false
+  var cLinks = currentTotalData.links
+  links.forEach((c, i, a) => {
+    linkFlag = false
+    for(let j = 0; j < cLinks.length; j++) {
+      if (cLinks[j].source === c.source && cLinks[j].target === c.target) {
+        linkFlag = true
+      }
+    }
+    if (!linkFlag) {
+      currentTotalData.links.push(c)
+    }
+  })
+  // 判断点击节点直接相关的links是否已经存在
+  // 若全部存在，则提示没有新节点了，不重新渲染
+  if (linkFlag) {
+    alert(`和【${name}】相关的全部节点都已经显示了`)
+    return
+  }
+  // 遍历currentTotalData.links里的节点,currentTotalData.links是合并后的
+  var nodes = []
+  currentTotalData.links.forEach((c, i, a) => {
+    nodes.push(c.source)
+    nodes.push(c.target)
+  })
+  console.log('nodes', nodes)
+  // 先去重
+  nodes = nodes.filter((c, i, a) => {
+    return a.indexOf(c, 0) === i
+  })
+  console.log('nodes', nodes)
+  // 再生成渲染的nodes
+  currentTotalData.nodes = nodes.map(c => {
+    return {
+      id: c
+    }
+  })
+  // currentTotalData = {
+  //   nodes: [{
+  //     id: '金蝉子'
+  //   }, {
+  //     id: '唐僧'
+  //   }],
+  //   links: [{
+  //     source: '金蝉子',
+  //     target: '唐僧',
+  //     relation: 'past_lift',
+  //     label: '前世'
+  //   }]
+  // }
+  console.log('currentTotalData', currentTotalData)
+  d3.select('svg').remove()
+  chart(currentTotalData)
+}
 
 function unique(arr) {
   return arr.filter((c, i, a) => {
@@ -118,8 +197,12 @@ function chart(data) {
       .force("charge", d3.forceManyBody().strength(-500))
       .force("center", d3.forceCenter(width / 2, height / 2));
 
-  const svg = d3.create("svg")
-      .attr("viewBox", [0, 0, width, height]);
+  // const svg = d3.create("svg")
+  //     .attr("viewBox", [0, 0, width, height])
+  
+  var svg = d3.select('#svg-wrap').append('svg')
+    .attr("viewBox", [0, 0, width, height])
+
 
   const link = svg.append("g")
                   .attr('fill', 'none')
@@ -132,7 +215,7 @@ function chart(data) {
                   .attr('stroke', '#ccc')
   
   var mytext = link.append('text')
-                  .attr("fill", "#409EFF")
+                  .attr("fill", "none")
                   .text(d => {
                     return d.label
                   })
@@ -155,7 +238,9 @@ function chart(data) {
   node.append('circle')
       .attr("r", 5)
       .attr("fill", color)
+      .on('click', click)
   
+
   node.append('text')
       .attr("x", 8)
       .attr("y", "0.31em")
@@ -182,4 +267,17 @@ function chart(data) {
   // invalidation.then(() => simulation.stop());
 
   return svg.node();
+}
+
+function click(d) {
+  console.log('d', d)
+  console.log('currentClickNode', currentClickNode)
+  console.log('currentTotalData', currentTotalData)
+  console.log('totalData', totalData)
+  // 根据当前点击节点，在totalData里找到所有直接有关的节点
+  // 1. 根据links得到相关的点
+  // 2.
+  handleClick(d.id, currentTotalData)
+  // d3.select('svg').remove()
+  // chart(currentTotalData)
 }
